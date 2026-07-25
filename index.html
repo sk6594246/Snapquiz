@@ -1,0 +1,133 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <meta name="description" content="SnapQuiz AI - Turn any textbook page, storybook, or handwritten note into a fun, interactive quiz instantly.">
+  <meta name="theme-color" content="#6366f1">
+  <title>SnapQuiz - AI Quiz Generator</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Quicksand:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="styles.css">
+  <link rel="manifest" href="manifest.json">
+  <link rel="apple-touch-icon" href="assets/icon-192.png">
+</head>
+<body>
+  <div class="app-container">
+    <!-- SCREEN 1: WELCOME & SETUP -->
+    <div id="screen-setup" class="screen active">
+      <div class="welcome-top">
+        <div class="logo-text">SnapQuiz</div>
+        <div class="logo-sub">Turn any page into a fun quiz!</div>
+      </div>
+      <div class="hero-scene">
+        <div class="hero-circle">📸</div>
+        <div class="hero-badge">✨</div>
+      </div>
+      <div class="feature-row">
+        <div class="feature-chip"><span class="emoji">📷</span><span class="label">Snap Photo</span></div>
+        <div class="feature-chip"><span class="emoji">🤖</span><span class="label">AI Reads It</span></div>
+        <div class="feature-chip"><span class="emoji">🎮</span><span class="label">Play Quiz</span></div>
+      </div>
+      <div class="card">
+        <div class="card-header"><div class="card-icon">🎯</div><div class="card-title">Who is this quiz for?</div></div>
+        <div class="card-desc">Pick the age group so questions feel just right</div>
+        <div class="age-grid">
+          <button class="age-btn selected" data-age="5-7" onclick="selectAge(this)">
+            <span class="check-mark">✓</span><span class="emoji">🧸</span><div>Ages 5-7</div><div class="age-label">Kindergarten</div>
+          </button>
+          <button class="age-btn" data-age="8-10" onclick="selectAge(this)">
+            <span class="check-mark">✓</span><span class="emoji">🚀</span><div>Ages 8-10</div><div class="age-label">Elementary</div>
+          </button>
+          <button class="age-btn" data-age="11-13" onclick="selectAge(this)">
+            <span class="check-mark">✓</span><span class="emoji">🎓</span><div>Ages 11-13</div><div class="age-label">Middle School</div>
+          </button>
+        </div>
+      </div>
+      <div class="card">
+        <div class="card-header"><div class="card-icon">🔑</div><div class="card-title">Connect AI</div></div>
+        <div class="card-desc">Your key stays on your device — we never see it</div>
+        <div class="input-group">
+          <span class="input-icon">🔐</span>
+          <input type="password" id="apiKey" class="input-field" placeholder="Paste your Gemini API key..." autocomplete="off">
+        </div>
+        <div class="input-hint"><span>💡</span><span>Get a free key at <a href="https://aistudio.google.com/app/apikey" target="_blank" rel="noopener">Google AI Studio</a> — takes 30 seconds</span></div>
+      </div>
+      <div>
+        <button class="btn btn-primary btn-lg btn-shimmer" onclick="goToCapture()" style="margin-bottom:10px;"><span>📷</span> Open Camera</button>
+        <button class="btn btn-secondary" onclick="goToUpload()"><span>📁</span> Upload Photo Instead</button>
+      </div>
+      <div class="footer-text">Made with ❤️ for curious kids everywhere</div>
+    </div>
+
+    <!-- SCREEN 2: CAPTURE -->
+    <div id="screen-capture" class="screen">
+      <div class="capture-header">
+        <div><div class="capture-title">📸 Capture</div><div class="capture-subtitle">Point camera at any page</div></div>
+        <button class="quiz-back" onclick="goBack('screen-setup')" aria-label="Go back">←</button>
+      </div>
+      <div class="capture-area">
+        <video id="video" autoplay playsinline muted></video>
+        <img id="preview-img" alt="Captured preview">
+        <div id="camera-placeholder" class="camera-placeholder">
+          <span class="icon">📷</span><p>Camera is starting...</p><span class="sub">Please allow camera access</span>
+        </div>
+        <div id="capture-hint" class="capture-overlay-hint" style="display:none;">Tap the button below to snap!</div>
+        <button id="retake-btn" class="retake-btn" onclick="retakePhoto()"><span>↺</span> Retake</button>
+      </div>
+      <div class="tip-box" id="tip-box">
+        <span class="tip-icon">💡</span><span class="tip-text">For best results, hold steady and make sure text is well-lit and readable</span>
+      </div>
+      <div class="capture-actions">
+        <button id="snap-btn" class="btn btn-primary" onclick="takePhoto()"><span>📸</span> Snap Photo</button>
+        <button id="flip-btn" class="btn btn-secondary" onclick="flipCamera()"><span>🔄</span> Flip</button>
+      </div>
+      <div class="file-input-wrapper">
+        <input type="file" id="file-input" accept="image/*" onchange="handleFileSelect(event)" aria-label="Upload photo">
+        <button class="btn btn-secondary" onclick="document.getElementById('file-input').click()"><span>📁</span> Choose from Gallery</button>
+      </div>
+      <button id="generate-btn" class="btn btn-primary btn-lg hidden" onclick="generateQuiz()" style="margin-top:10px;"><span>✨</span> Generate Quiz!</button>
+    </div>
+
+    <!-- SCREEN 3: QUIZ -->
+    <div id="screen-quiz" class="screen">
+      <div class="quiz-topbar">
+        <button class="quiz-back" onclick="confirmQuit()" aria-label="Quit quiz">←</button>
+        <div class="quiz-score-pill"><span>⭐</span><span id="score">0</span></div>
+      </div>
+      <div class="progress-track"><div class="progress-fill" id="progress-fill" style="width:0%"></div></div>
+      <div id="question-container"></div>
+    </div>
+
+    <!-- SCREEN 4: RESULTS -->
+    <div id="screen-results" class="screen">
+      <div class="results-hero">
+        <div class="results-emoji" id="trophy-emoji">🏆</div>
+        <div class="results-title" id="results-title">Amazing!</div>
+        <div class="results-subtitle" id="results-subtitle">You did a fantastic job!</div>
+      </div>
+      <div class="stats-row">
+        <div class="stat-card"><div class="stat-emoji">✅</div><div class="stat-value" id="stat-correct">0</div><div class="stat-label">Correct</div></div>
+        <div class="stat-card"><div class="stat-emoji">📋</div><div class="stat-value" id="stat-total">0</div><div class="stat-label">Total</div></div>
+        <div class="stat-card"><div class="stat-emoji">🎯</div><div class="stat-value" id="stat-percent">0%</div><div class="stat-label">Score</div></div>
+      </div>
+      <div class="result-message" id="result-message"><p>Every question you try makes you smarter! 🌟</p></div>
+      <button class="btn btn-primary btn-lg" onclick="restartApp()" style="margin-bottom:10px;"><span>🔄</span> Create Another Quiz</button>
+      <button class="btn btn-secondary" onclick="goBack('screen-setup')"><span>⚙️</span> Change Settings</button>
+    </div>
+  </div>
+
+  <div id="loading-overlay" class="loading-overlay">
+    <div class="loading-illustration">🤖📖</div>
+    <div class="spinner-ring"></div>
+    <div class="loading-title">Reading your page<span class="loading-dots"></span></div>
+    <div class="loading-subtitle">AI is crafting fun, age-perfect questions</div>
+    <div class="loading-progress"><div class="loading-progress-bar"></div></div>
+  </div>
+
+  <div id="toast" class="toast"></div>
+  <canvas id="capture-canvas" style="display:none;"></canvas>
+  <script src="app.js"></script>
+</body>
+</html>
