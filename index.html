@@ -4,6 +4,7 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Photo Quiz PWA</title>
+  <link rel="manifest" href="./manifest.json">
   <style>
     :root {
       --primary: #4A90E2;
@@ -28,7 +29,7 @@
       border-radius: 12px;
       box-shadow: 0 4px 15px rgba(0,0,0,0.1);
     }
-    h1 { text-align: center; color: var(--primary); margin-top: 0; }
+    h1, h2 { text-align: center; color: var(--primary); margin-top: 0; }
     .group { margin-bottom: 1.2rem; }
     label { display: block; font-weight: bold; margin-bottom: 0.4rem; }
     input[type="text"], input[type="password"], select {
@@ -96,6 +97,22 @@
       cursor: pointer;
       margin-top: 0.5rem;
     }
+    .history-section {
+      margin-top: 2rem;
+      border-top: 2px dashed #DDD;
+      padding-top: 1rem;
+    }
+    .history-item {
+      background: #FFF;
+      border: 1px solid #EEE;
+      padding: 0.8rem;
+      border-radius: 6px;
+      margin-bottom: 0.5rem;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      font-size: 0.9rem;
+    }
   </style>
 </head>
 <body>
@@ -103,7 +120,7 @@
 <div class="container">
   <h1>Photo Quiz AI</h1>
 
-  <!-- API Key Configuration -->
+  <!-- Step 1: API Configuration -->
   <div class="group">
     <label for="apiKey">Gemini API Key:</label>
     <input type="password" id="apiKey" placeholder="AIzaSy..." onchange="loadModels()">
@@ -113,7 +130,7 @@
     <div id="status" class="status-msg">Enter key to fetch available models.</div>
   </div>
 
-  <!-- Dynamic & Version-Sorted Model Selection -->
+  <!-- Dynamic & Version-Sorted Model Selector -->
   <div class="group">
     <label for="modelSelect">Select Model:</label>
     <select id="modelSelect" disabled>
@@ -121,7 +138,7 @@
     </select>
   </div>
 
-  <!-- Target Audience -->
+  <!-- Step 2: Target Age Group -->
   <div class="group">
     <label for="ageGroup">Target Age Group:</label>
     <select id="ageGroup">
@@ -131,7 +148,7 @@
     </select>
   </div>
 
-  <!-- Multiple Image Upload / Camera Capture -->
+  <!-- Step 3: Multi-Image Inputs -->
   <div class="group">
     <label>Snap Photo(s) or Upload File(s):</label>
     
@@ -151,15 +168,33 @@
 
   <button class="btn" id="generateBtn" onclick="generateQuiz()">Generate Quiz</button>
 
-  <!-- Interactive Quiz Output -->
+  <!-- Step 4: Interactive Quiz Section -->
   <div id="quizContainer" style="margin-top: 2rem;"></div>
+
+  <!-- Step 5: Score History Section -->
+  <div class="history-section">
+    <h2>Score History</h2>
+    <div id="historyList"></div>
+    <button id="clearHistoryBtn" class="clear-btn" style="display:none;" onclick="clearScoreHistory()">Clear History</button>
+  </div>
 </div>
 
 <script>
-  let currentImages = []; // Stores Array of { mimeType, base64 }
+  // Register Service Worker using relative path ./sw.js for GitHub Pages compatibility
+  if ('serviceWorker' in navigator) {
+    navigator.serviceWorker.register('./sw.js').catch(err => console.log('SW registration failed:', err));
+  }
+
+  let currentImages = [];
+  let totalQuestionsCount = 0;
+  let answeredQuestionsCount = 0;
+  let currentCorrectScore = 0;
+
   const FALLBACK_MODELS = ['gemini-2.5-flash', 'gemini-2.5-pro', 'gemini-2.0-flash', 'gemini-1.5-flash'];
 
-  // Handle multiple image selection
+  // Initialize Score History on Page Load
+  document.addEventListener('DOMContentLoaded', displayScoreHistory);
+
   function processSelectedImages(event) {
     const files = Array.from(event.target.files);
     if (!files.length) return;
@@ -177,7 +212,7 @@
       reader.readAsDataURL(file);
     });
 
-    event.target.value = ''; // Reset input to allow re-uploading same file if needed
+    event.target.value = '';
   }
 
   function updateGalleryUI() {
@@ -199,7 +234,6 @@
     updateGalleryUI();
   }
 
-  // Load and sort models by highest version number first
   async function loadModels() {
     const apiKey = document.getElementById('apiKey').value.trim();
     const modelSelect = document.getElementById('modelSelect');
@@ -222,7 +256,7 @@
         !m.name.includes('aqa')
       );
 
-      // Version sorting logic (Highest major/minor version first)
+      // Sort models numerically by version number (descending)
       genModels.sort((a, b) => {
         const nameA = a.name.toLowerCase();
         const nameB = b.name.toLowerCase();
@@ -254,7 +288,6 @@
     }
   }
 
-  // Automatic model fallback execution
   async function callGeminiApiWithFallback(selectedModel, payload, apiKey) {
     const modelQueue = Array.from(new Set([selectedModel, ...FALLBACK_MODELS]));
 
@@ -274,7 +307,7 @@
         if (response.ok && result.candidates?.[0]?.content?.parts?.[0]?.text) {
           return result.candidates[0].content.parts[0].text;
         }
-        console.warn(`Model ${model} failed, attempting next fallback...`, result);
+        console.warn(`Model ${model} failed, attempting fallback...`, result);
       } catch (err) {
         console.warn(`Network error on model ${model}:`, err);
       }
@@ -282,7 +315,6 @@
     throw new Error('All model attempts failed. Check your API key or network connection.');
   }
 
-  // Generate Quiz Logic
   async function generateQuiz() {
     const apiKey = document.getElementById('apiKey').value.trim();
     const selectedModel = document.getElementById('modelSelect').value;
@@ -296,7 +328,6 @@
     btn.disabled = true;
     quizContainer.innerHTML = `<p>Analyzing ${currentImages.length} image(s) and building quiz...</p>`;
 
-    // Prompt engineered to strip page/section numbers and enforce document grounding
     const promptText = `Carefully examine all provided images. Generate an interactive 3-question quiz grounded directly in the provided material, tailored for a ${ageGroup} student level.
 
     CRITICAL RULES:
@@ -315,7 +346,6 @@
       ]
     }`;
 
-    // Construct parts array with text prompt followed by all image inline data
     const parts = [{ text: promptText }];
     currentImages.forEach(img => {
       parts.push({
@@ -335,7 +365,7 @@
       const cleanJson = rawText.replace(/```json|```/g, '').trim();
       const quizData = JSON.parse(cleanJson);
       
-      renderQuiz(quizData.quiz);
+      renderQuiz(quizData.quiz, ageGroup);
       document.getElementById('status').innerText = 'Quiz successfully generated!';
     } catch (err) {
       quizContainer.innerHTML = `<p style="color:red;">Error: ${err.message}</p>`;
@@ -344,9 +374,14 @@
     }
   }
 
-  function renderQuiz(questions) {
+  function renderQuiz(questions, ageGroup) {
     const quizContainer = document.getElementById('quizContainer');
     quizContainer.innerHTML = '';
+
+    // Reset scoring trackers
+    totalQuestionsCount = questions.length;
+    answeredQuestionsCount = 0;
+    currentCorrectScore = 0;
 
     questions.forEach((q, qIndex) => {
       const card = document.createElement('div');
@@ -367,8 +402,11 @@
           const siblingBtns = optionsDiv.querySelectorAll('.option-btn');
           siblingBtns.forEach(b => b.onclick = null);
 
+          answeredQuestionsCount++;
+
           if (oIndex === q.answerIndex) {
             optBtn.classList.add('correct');
+            currentCorrectScore++;
           } else {
             optBtn.classList.add('incorrect');
             siblingBtns[q.answerIndex].classList.add('correct');
@@ -378,6 +416,11 @@
           exp.className = 'explanation';
           exp.innerHTML = `<strong>Explanation:</strong> ${q.explanation}`;
           card.appendChild(exp);
+
+          // Save score once all questions are answered
+          if (answeredQuestionsCount === totalQuestionsCount) {
+            saveScore(ageGroup, currentCorrectScore, totalQuestionsCount);
+          }
         };
 
         optionsDiv.appendChild(optBtn);
@@ -386,6 +429,52 @@
       card.appendChild(optionsDiv);
       quizContainer.appendChild(card);
     });
+  }
+
+  // LocalStorage Score Operations
+  function saveScore(ageGroup, score, total) {
+    const history = JSON.parse(localStorage.getItem('photo_quiz_scores') || '[]');
+    const record = {
+      date: new Date().toLocaleString(),
+      ageGroup,
+      score: `${score}/${total}`,
+      percentage: Math.round((score / total) * 100) + '%'
+    };
+
+    history.unshift(record); // Add newest result to the top
+    localStorage.setItem('photo_quiz_scores', JSON.stringify(history));
+    displayScoreHistory();
+  }
+
+  function displayScoreHistory() {
+    const historyList = document.getElementById('historyList');
+    const clearBtn = document.getElementById('clearHistoryBtn');
+    const history = JSON.parse(localStorage.getItem('photo_quiz_scores') || '[]');
+
+    if (history.length === 0) {
+      historyList.innerHTML = '<p class="status-msg">No quiz history recorded yet.</p>';
+      clearBtn.style.display = 'none';
+      return;
+    }
+
+    historyList.innerHTML = history.map(item => `
+      <div class="history-item">
+        <div>
+          <strong>${item.ageGroup}</strong><br>
+          <small style="color:#777;">${item.date}</small>
+        </div>
+        <div style="font-weight: bold; color: var(--primary);">
+          ${item.score} (${item.percentage})
+        </div>
+      </div>
+    `).join('');
+
+    clearBtn.style.display = 'inline-block';
+  }
+
+  function clearScoreHistory() {
+    localStorage.removeItem('photo_quiz_scores');
+    displayScoreHistory();
   }
 </script>
 </body>
