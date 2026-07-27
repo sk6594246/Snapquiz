@@ -4,8 +4,6 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Photo Quiz PWA</title>
-  <link rel="manifest" href="manifest.json">
-  <meta name="theme-color" content="#4A90E2">
   <style>
     :root {
       --primary: #4A90E2;
@@ -80,6 +78,7 @@
     .option-btn.incorrect { background: #F8D7DA; border-color: #DC3545; }
     .explanation { margin-top: 0.5rem; font-size: 0.9rem; color: #555; }
     .status-msg { font-size: 0.85rem; color: #666; font-style: italic; margin-top: 0.2rem; }
+    .help-link { font-size: 0.85rem; margin-top: 0.2rem; display: inline-block; }
   </style>
 </head>
 <body>
@@ -87,10 +86,13 @@
 <div class="container">
   <h1>Photo Quiz AI</h1>
 
-  <!-- Step 1: API Configuration -->
+  <!-- Step 1: API Key Configuration -->
   <div class="group">
     <label for="apiKey">Gemini API Key:</label>
     <input type="password" id="apiKey" placeholder="AIzaSy..." onchange="loadModels()">
+    <div class="help-link">
+      Need a key? Generate or copy one from <a href="https://aistudio.google.com/" target="_blank">Google AI Studio</a>.
+    </div>
     <div id="status" class="status-msg">Enter key to fetch available models.</div>
   </div>
 
@@ -112,10 +114,22 @@
     </select>
   </div>
 
-  <!-- Step 3: Photo Input -->
+  <!-- Step 3: Photo Input (Camera or Storage Upload) -->
   <div class="group">
-    <label for="imageInput">Snap Photo / Upload Image:</label>
-    <input type="file" id="imageInput" accept="image/*" capture="environment" onchange="previewImage(event)">
+    <label>Snap Photo or Upload from Storage:</label>
+    
+    <!-- Option A: Direct Camera Capture -->
+    <div style="margin-bottom: 0.5rem;">
+      <label style="font-weight: normal; font-size: 0.9rem;">Take Photo with Camera:</label>
+      <input type="file" id="cameraInput" accept="image/*" capture="environment" onchange="processSelectedImage(event)">
+    </div>
+
+    <!-- Option B: Upload from Device Storage -->
+    <div>
+      <label style="font-weight: normal; font-size: 0.9rem;">Upload File from Storage:</label>
+      <input type="file" id="storageInput" accept="image/*" onchange="processSelectedImage(event)">
+    </div>
+
     <img id="imagePreview" alt="Preview">
   </div>
 
@@ -126,17 +140,11 @@
 </div>
 
 <script>
-  // Register Service Worker for PWA compliance
-  if ('serviceWorker' in navigator) {
-    navigator.serviceWorker.register('sw.js').catch(err => console.log('SW registration failed:', err));
-  }
-
   let currentImageBase64 = null;
-  // Default fallback models array for free tier resilience
   const FALLBACK_MODELS = ['gemini-2.5-flash', 'gemini-1.5-flash', 'gemini-1.5-pro'];
 
-  // Handle image selection and conversion to base64
-  function previewImage(event) {
+  // Unified handler for image files coming from either camera or storage upload
+  function processSelectedImage(event) {
     const file = event.target.files[0];
     if (file) {
       const reader = new FileReader();
@@ -144,14 +152,14 @@
         const preview = document.getElementById('imagePreview');
         preview.src = e.target.result;
         preview.style.display = 'block';
-        // Remove data header string (e.g. "data:image/jpeg;base64,") for Gemini API
+        // Extract base64 payload excluding the data header prefix
         currentImageBase64 = e.target.result.split(',')[1];
       };
       reader.readAsDataURL(file);
     }
   }
 
-  // Dynamically load models associated with the key
+  // Dynamically query available models using user's API key
   async function loadModels() {
     const apiKey = document.getElementById('apiKey').value.trim();
     const modelSelect = document.getElementById('modelSelect');
@@ -167,7 +175,6 @@
       if (data.error) throw new Error(data.error.message);
 
       modelSelect.innerHTML = '';
-      // Filter for models supporting content generation
       const genModels = data.models.filter(m => m.supportedGenerationMethods?.includes('generateContent'));
 
       genModels.forEach(m => {
@@ -187,9 +194,8 @@
     }
   }
 
-  // Core function to call API with fallbacks
+  // Automated model fallback cascade
   async function callGeminiApiWithFallback(selectedModel, payload, apiKey) {
-    // Priority queue: Selected model first, followed by fallbacks without duplicates
     const modelQueue = Array.from(new Set([selectedModel, ...FALLBACK_MODELS]));
 
     for (let model of modelQueue) {
@@ -206,7 +212,7 @@
 
         const result = await response.json();
         if (response.ok && result.candidates?.[0]?.content?.parts?.[0]?.text) {
-          return result.candidates[0].content.parts[0].text; // Success!
+          return result.candidates[0].content.parts[0].text;
         }
         console.warn(`Model ${model} failed, trying next fallback...`, result);
       } catch (err) {
@@ -216,7 +222,7 @@
     throw new Error('All model attempts failed. Please check your API key or network connection.');
   }
 
-  // Main execution function
+  // Quiz generation logic
   async function generateQuiz() {
     const apiKey = document.getElementById('apiKey').value.trim();
     const selectedModel = document.getElementById('modelSelect').value;
@@ -225,13 +231,12 @@
     const quizContainer = document.getElementById('quizContainer');
 
     if (!apiKey) return alert('Please enter your Gemini API key.');
-    if (!currentImageBase64) return alert('Please snap or upload a photo first.');
+    if (!currentImageBase64) return alert('Please snap a photo or upload an image first.');
 
     btn.disabled = true;
-    quizContainer.innerHTML = '<p>Analyzing image and constructing quiz...</p>';
+    quizContainer.innerHTML = '<p>Analyzing image and constructing quiz with document grounding...</p>';
 
-    // Build multimodal payload forcing structured JSON output
-    const promptText = `Analyze this image carefully. Generate an interactive 3-question quiz grounded directly in the visual content of this image, tailored for a ${ageGroup} student level.
+    const promptText = `Analyze this image carefully. Generate an interactive 3-question quiz strictly grounded in the visual content of this image, tailored for a ${ageGroup} student level.
     
     Return strictly valid JSON using this format without markdown code fences:
     {
@@ -271,7 +276,7 @@
     }
   }
 
-  // Render quiz components into the DOM
+  // Render interactive elements
   function renderQuiz(questions) {
     const quizContainer = document.getElementById('quizContainer');
     quizContainer.innerHTML = '';
@@ -292,7 +297,6 @@
         optBtn.innerText = opt;
         
         optBtn.onclick = () => {
-          // Disable further clicks on this question
           const siblingBtns = optionsDiv.querySelectorAll('.option-btn');
           siblingBtns.forEach(b => b.onclick = null);
 
