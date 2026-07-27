@@ -138,13 +138,24 @@
     </select>
   </div>
 
-  <!-- Step 2: Target Age Group -->
+  <!-- Step 2a: Target Age Group -->
   <div class="group">
     <label for="ageGroup">Target Age Group:</label>
     <select id="ageGroup">
       <option value="Elementary School">Elementary School</option>
       <option value="Middle School">Middle School</option>
       <option value="High School">High School</option>
+    </select>
+  </div>
+
+  <!-- Step 2b: Question Count Selector -->
+  <div class="group">
+    <label for="questionCount">Number of Questions:</label>
+    <select id="questionCount">
+      <option value="3">3 Questions</option>
+      <option value="5" selected>5 Questions</option>
+      <option value="10">10 Questions</option>
+      <option value="15">15 Questions</option>
     </select>
   </div>
 
@@ -168,7 +179,7 @@
 
   <button class="btn" id="generateBtn" onclick="generateQuiz()">Generate Quiz</button>
 
-  <!-- Step 4: Interactive Quiz Section -->
+  <!-- Step 4: Interactive Quiz Output -->
   <div id="quizContainer" style="margin-top: 2rem;"></div>
 
   <!-- Step 5: Score History Section -->
@@ -180,7 +191,7 @@
 </div>
 
 <script>
-  // Register Service Worker using relative path ./sw.js for GitHub Pages compatibility
+  // Register Service Worker with relative path for subpath GitHub Pages compatibility
   if ('serviceWorker' in navigator) {
     navigator.serviceWorker.register('./sw.js').catch(err => console.log('SW registration failed:', err));
   }
@@ -192,7 +203,7 @@
 
   const FALLBACK_MODELS = ['gemini-2.5-flash', 'gemini-2.5-pro', 'gemini-2.0-flash', 'gemini-1.5-flash'];
 
-  // Initialize Score History on Page Load
+  // Render score history on load
   document.addEventListener('DOMContentLoaded', displayScoreHistory);
 
   function processSelectedImages(event) {
@@ -256,7 +267,7 @@
         !m.name.includes('aqa')
       );
 
-      // Sort models numerically by version number (descending)
+      // Sort models numerically by extracted version number (descending)
       genModels.sort((a, b) => {
         const nameA = a.name.toLowerCase();
         const nameB = b.name.toLowerCase();
@@ -319,6 +330,7 @@
     const apiKey = document.getElementById('apiKey').value.trim();
     const selectedModel = document.getElementById('modelSelect').value;
     const ageGroup = document.getElementById('ageGroup').value;
+    const questionCount = document.getElementById('questionCount').value;
     const btn = document.getElementById('generateBtn');
     const quizContainer = document.getElementById('quizContainer');
 
@@ -326,9 +338,9 @@
     if (currentImages.length === 0) return alert('Please snap or upload at least one photo.');
 
     btn.disabled = true;
-    quizContainer.innerHTML = `<p>Analyzing ${currentImages.length} image(s) and building quiz...</p>`;
+    quizContainer.innerHTML = `<p>Analyzing ${currentImages.length} image(s) and building a ${questionCount}-question quiz...</p>`;
 
-    const promptText = `Carefully examine all provided images. Generate an interactive 3-question quiz grounded directly in the provided material, tailored for a ${ageGroup} student level.
+    const promptText = `Carefully examine all provided images. Generate an interactive ${questionCount}-question quiz grounded directly in the provided material, tailored for a ${ageGroup} student level.
 
     CRITICAL RULES:
     1. Do NOT include any references to page numbers, slide numbers, or section names in the questions or explanations (e.g., write "What is...", NEVER "From page 3, what is...").
@@ -378,7 +390,6 @@
     const quizContainer = document.getElementById('quizContainer');
     quizContainer.innerHTML = '';
 
-    // Reset scoring trackers
     totalQuestionsCount = questions.length;
     answeredQuestionsCount = 0;
     currentCorrectScore = 0;
@@ -417,7 +428,6 @@
           exp.innerHTML = `<strong>Explanation:</strong> ${q.explanation}`;
           card.appendChild(exp);
 
-          // Save score once all questions are answered
           if (answeredQuestionsCount === totalQuestionsCount) {
             saveScore(ageGroup, currentCorrectScore, totalQuestionsCount);
           }
@@ -431,7 +441,6 @@
     });
   }
 
-  // LocalStorage Score Operations
   function saveScore(ageGroup, score, total) {
     const history = JSON.parse(localStorage.getItem('photo_quiz_scores') || '[]');
     const record = {
@@ -441,7 +450,7 @@
       percentage: Math.round((score / total) * 100) + '%'
     };
 
-    history.unshift(record); // Add newest result to the top
+    history.unshift(record);
     localStorage.setItem('photo_quiz_scores', JSON.stringify(history));
     displayScoreHistory();
   }
