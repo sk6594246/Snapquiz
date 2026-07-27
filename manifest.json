@@ -2,7 +2,7 @@
   "name": "SnapQuiz - AI Quiz Generator",
   "short_name": "SnapQuiz",
   "description": "Turn any textbook page, storybook, or handwritten note into a fun, interactive quiz instantly using AI.",
-  "start_url": "/",
+  "start_url": "./index.html",
   "display": "standalone",
   "background_color": "#f0f4f8",
   "theme_color": "#6366f1",
