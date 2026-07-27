@@ -5,6 +5,10 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Photo Quiz PWA</title>
   <link rel="manifest" href="./manifest.json">
+  
+  <!-- HTML2PDF Library for PDF Export -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js"></script>
+
   <style>
     :root {
       --primary: #4A90E2;
@@ -51,6 +55,18 @@
       font-weight: bold;
     }
     .btn:disabled { background: #AAA; }
+    .pdf-btn {
+      background: #27AE60;
+      color: white;
+      border: none;
+      padding: 0.6rem 1rem;
+      font-size: 0.9rem;
+      border-radius: 6px;
+      cursor: pointer;
+      font-weight: bold;
+      margin-bottom: 1rem;
+      width: 100%;
+    }
     .gallery {
       display: flex;
       flex-wrap: wrap;
@@ -120,7 +136,7 @@
 <div class="container">
   <h1>Photo Quiz AI</h1>
 
-  <!-- Step 1: API Configuration -->
+  <!-- Step 1: API Key Configuration -->
   <div class="group">
     <label for="apiKey">Gemini API Key:</label>
     <input type="password" id="apiKey" placeholder="AIzaSy..." oninput="handleApiKeyInput()">
@@ -130,7 +146,7 @@
     <div id="status" class="status-msg">Enter key to fetch available models.</div>
   </div>
 
-  <!-- Dynamic & Version-Sorted Model Selector -->
+  <!-- Dynamic & Sorted Model Selector -->
   <div class="group">
     <label for="modelSelect">Select Model:</label>
     <select id="modelSelect" disabled>
@@ -179,7 +195,7 @@
 
   <button class="btn" id="generateBtn" onclick="generateQuiz()">Generate Quiz</button>
 
-  <!-- Step 4: Interactive Quiz Output -->
+  <!-- Step 4: Interactive Quiz & Download Container -->
   <div id="quizContainer" style="margin-top: 2rem;"></div>
 
   <!-- Step 5: Score History Section -->
@@ -191,7 +207,7 @@
 </div>
 
 <script>
-  // Register Service Worker using relative path for GitHub Pages subpath compatibility
+  // Register Service Worker with relative path for subpath GitHub Pages compatibility
   if ('serviceWorker' in navigator) {
     navigator.serviceWorker.register('./sw.js').catch(err => console.log('SW registration failed:', err));
   }
@@ -203,7 +219,7 @@
 
   const FALLBACK_MODELS = ['gemini-2.5-flash', 'gemini-2.5-pro', 'gemini-2.0-flash', 'gemini-1.5-flash'];
 
-  // Initialization on DOM Load: Restore API Key, Uploaded Images, and Score History
+  // Restore State on Startup
   document.addEventListener('DOMContentLoaded', () => {
     restoreSavedApiKey();
     restoreSavedImages();
@@ -211,7 +227,7 @@
   });
 
   /* ========================================================
-     RESTORE & SAVE STATE (API KEY & IMAGES)
+     PERSISTENT STORAGE LOGIC (API KEY & IMAGES)
      ======================================================== */
 
   function handleApiKeyInput() {
@@ -236,7 +252,7 @@
     try {
       localStorage.setItem('photo_quiz_temp_images', JSON.stringify(currentImages));
     } catch (e) {
-      console.warn('Storage limit reached, could not save all images to cache:', e);
+      console.warn('Storage limit reached, could not save all images:', e);
     }
   }
 
@@ -253,7 +269,7 @@
   }
 
   /* ========================================================
-     IMAGE PROCESSING & GALLERY
+     IMAGE PROCESSING & GALLERY MANAGEMENT
      ======================================================== */
 
   function processSelectedImages(event) {
@@ -304,7 +320,7 @@
   }
 
   /* ========================================================
-     MODEL FETCHING & API CALLS
+     MODEL FETCHING & API EXECUTION
      ======================================================== */
 
   async function loadModels() {
@@ -329,7 +345,6 @@
         !m.name.includes('aqa')
       );
 
-      // Sort models numerically by extracted version number (descending)
       genModels.sort((a, b) => {
         const nameA = a.name.toLowerCase();
         const nameB = b.name.toLowerCase();
@@ -389,7 +404,7 @@
   }
 
   /* ========================================================
-     QUIZ GENERATION & CONFIRMATION GUARD
+     QUIZ GENERATION & DISPLAY
      ======================================================== */
 
   async function generateQuiz() {
@@ -400,13 +415,10 @@
     const btn = document.getElementById('generateBtn');
     const quizContainer = document.getElementById('quizContainer');
 
-    // BUG FIX 2: Guard against accidental re-generation if a quiz is currently visible
     const existingCards = quizContainer.querySelectorAll('.quiz-card');
     if (existingCards.length > 0) {
       const confirmNew = confirm("Do you need new set of Questions?");
-      if (!confirmNew) {
-        return; // User canceled the action
-      }
+      if (!confirmNew) return;
     }
 
     if (!apiKey) return alert('Please enter your Gemini API key.');
@@ -465,6 +477,17 @@
     const quizContainer = document.getElementById('quizContainer');
     quizContainer.innerHTML = '';
 
+    // Add PDF Download Button at the top of the generated quiz
+    const pdfBtn = document.createElement('button');
+    pdfBtn.className = 'pdf-btn';
+    pdfBtn.innerText = '📥 Download Quiz as PDF';
+    pdfBtn.onclick = downloadQuizPDF;
+    quizContainer.appendChild(pdfBtn);
+
+    // Wrapper for clean PDF formatting
+    const printArea = document.createElement('div');
+    printArea.id = 'printArea';
+
     totalQuestionsCount = questions.length;
     answeredQuestionsCount = 0;
     currentCorrectScore = 0;
@@ -512,12 +535,33 @@
       });
 
       card.appendChild(optionsDiv);
-      quizContainer.appendChild(card);
+      printArea.appendChild(card);
     });
+
+    quizContainer.appendChild(printArea);
   }
 
   /* ========================================================
-     LOCALSTORAGE SCORE HISTORY
+     PDF GENERATION FUNCTION
+     ======================================================== */
+
+  function downloadQuizPDF() {
+    const element = document.getElementById('printArea');
+    if (!element) return;
+
+    const opt = {
+      margin:       0.5,
+      filename:     'Photo_Quiz.pdf',
+      image:        { type: 'jpeg', quality: 0.98 },
+      html2canvas:  { scale: 2 },
+      jsPDF:        { unit: 'in', format: 'letter', orientation: 'portrait' }
+    };
+
+    html2pdf().set(opt).from(element).save();
+  }
+
+  /* ========================================================
+     LOCALSTORAGE SCORE HISTORY OPERATIONS
      ======================================================== */
 
   function saveScore(ageGroup, score, total) {
