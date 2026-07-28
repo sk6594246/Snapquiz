@@ -897,25 +897,55 @@ function renderImagePicker() {
     `);
   }
   els.imagePicker.innerHTML = slots.join('');
-//==========================================================================================================
-// Bind camera button
-const cameraBtn = $('.add-opt[data-source="camera"]', els.imagePicker);
-const cameraInput = $('#cameraInput', els.imagePicker);
+// -----------------------------------------------------------------------------------------------------------------------------
+// 1️⃣  Bind the two “Add image” buttons (camera / library)
+// ---------------------------------------------------------------
+// Camera
+const cameraBtn   = $('.add-opt[data-source="camera"]',   els.imagePicker);
+const cameraInput = $('#cameraInput',                     els.imagePicker);
 if (cameraBtn && cameraInput) {
-  cameraBtn.addEventListener('click', () => cameraInput.click());
-  cameraBtn.addEventListener('keydown', e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); cameraInput.click(); } });
+  cameraBtn.addEventListener('click',   () => cameraInput.click());
+  cameraBtn.addEventListener('keydown', e => {
+    if (e.key === 'Enter' || e.key === ' ') {
+      e.preventDefault();
+      cameraInput.click();
+    }
+  });
   cameraInput.addEventListener('change', handleFiles);
 }
 
-// Bind library button
-const libraryBtn = $('.add-opt[data-source="library"]', els.imagePicker);
-const libraryInput = $('#libraryInput', els.imagePicker);
+// Library
+const libraryBtn   = $('.add-opt[data-source="library"]',   els.imagePicker);
+const libraryInput = $('#libraryInput',                     els.imagePicker);
 if (libraryBtn && libraryInput) {
-  libraryBtn.addEventListener('click', () => libraryInput.click());
-  libraryBtn.addEventListener('keydown', e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); libraryInput.click(); } });
+  libraryBtn.addEventListener('click',   () => libraryInput.click());
+  libraryBtn.addEventListener('keydown', e => {
+    if (e.key === 'Enter' || e.key === ' ') {
+      e.preventDefault();
+      libraryInput.click();
+    }
+  });
   libraryInput.addEventListener('change', handleFiles);
+}
 
-//========================================================================================================
+// ---------------------------------------------------------------
+// 2️⃣  Existing slot‑click / remove‑button bindings
+// ---------------------------------------------------------------
+$$('.image-slot.has-image', els.imagePicker).forEach(slot => {
+  slot.addEventListener('click', e => {
+    if (!e.target.closest('.remove-btn')) {
+      removeImage(Number(slot.dataset.index));
+    }
+  });
+});
+
+$$('.remove-btn', els.imagePicker).forEach(btn => {
+  btn.addEventListener('click', e => {
+    e.stopPropagation();                 // don’t trigger the slot click
+    removeImage(Number(btn.dataset.index));
+  });
+});
+//========================================================================================================================================
   
   // Bind events
   $$('.image-slot.has-image', els.imagePicker).forEach(slot => {
