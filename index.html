@@ -897,7 +897,26 @@ function renderImagePicker() {
     `);
   }
   els.imagePicker.innerHTML = slots.join('');
+//==========================================================================================================
+// Bind camera button
+const cameraBtn = $('.add-opt[data-source="camera"]', els.imagePicker);
+const cameraInput = $('#cameraInput', els.imagePicker);
+if (cameraBtn && cameraInput) {
+  cameraBtn.addEventListener('click', () => cameraInput.click());
+  cameraBtn.addEventListener('keydown', e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); cameraInput.click(); } });
+  cameraInput.addEventListener('change', handleFiles);
+}
 
+// Bind library button
+const libraryBtn = $('.add-opt[data-source="library"]', els.imagePicker);
+const libraryInput = $('#libraryInput', els.imagePicker);
+if (libraryBtn && libraryInput) {
+  libraryBtn.addEventListener('click', () => libraryInput.click());
+  libraryBtn.addEventListener('keydown', e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); libraryInput.click(); } });
+  libraryInput.addEventListener('change', handleFiles);
+
+//========================================================================================================
+  
   // Bind events
   $$('.image-slot.has-image', els.imagePicker).forEach(slot => {
     slot.addEventListener('click', e => {
