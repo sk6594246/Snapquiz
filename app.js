@@ -184,6 +184,13 @@ function handleFileSelect(e) {
 }
 
 // ===== QUIZ GENERATION =====
+// Uses Gemini generateContent REST API with current best practices (2026):
+// - API key via x-goog-api-key header (not query string)
+// - Current stable multimodal model
+// - Structured Outputs (responseMimeType + responseSchema) for reliable JSON
+const GEMINI_MODEL = 'gemini-3.6-flash';
+const GEMINI_API_BASE = 'https://generativelanguage.googleapis.com/v1beta';
+
 async function generateQuiz() {
   if (!capturedImage) {
     showToast('Please take or upload a photo first!', 'error');
@@ -191,10 +198,18 @@ async function generateQuiz() {
   }
 
   const apiKey = document.getElementById('apiKey').value.trim();
+  if (!apiKey) {
+    showToast('Please paste your Gemini API key first!', 'error');
+    return;
+  }
+
   document.getElementById('loading-overlay').classList.add('active');
 
   try {
     const base64Data = capturedImage.split(',')[1];
+    // Detect mime type from data URL (supports jpeg/png/webp)
+    const mimeMatch = capturedImage.match(/^data:(image\/[a-z+]+);base64,/i);
+    const mimeType = mimeMatch ? mimeMatch[1] : 'image/jpeg';
 
     const ageTone = {
       '5-7': 'very playful, uses simple words, lots of encouragement and praise, like a warm kindergarten teacher. Keep questions simple and visual.',
@@ -202,11 +217,11 @@ async function generateQuiz() {
       '11-13': 'smart and engaging, respects their intelligence, slightly more sophisticated but still fun and supportive.'
     }[selectedAge];
 
-    const promptText = `You are an expert educational content creator for children ages ${selectedAge}. 
+    const promptText = `You are an expert educational content creator for children ages ${selectedAge}.
 
 Look at this image of a textbook page, storybook page, or handwritten note. Read and understand the content thoroughly.
 
-Generate exactly 5 multiple-choice quiz questions based STRICTLY on the content visible in the image. 
+Generate exactly 5 multiple-choice quiz questions based STRICTLY on the content visible in the image.
 
 Rules:
 - Questions must be answerable ONLY from the image content
@@ -216,58 +231,116 @@ Rules:
 - Make questions engaging and appropriately challenging for the age group
 - If the image is a story, ask comprehension questions about characters, plot, or vocabulary
 - If the image is a textbook, ask about facts, concepts, or definitions shown
-- If the image is handwritten notes, ask about the topics covered
+- If the image is handwritten notes, ask about the topics covered`;
 
-Respond ONLY with valid JSON in this exact format (no markdown, no extra text, no code fences):
-{
-  "quiz": [
-    {
-      "question": "string",
-      "options": ["A) string", "B) string", "C) string", "D) string"],
-      "correctIndex": 0,
-      "explanation": "string"
-    }
-  ]
-}`;
-
-    const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash-exp:generateContent?key=${apiKey}`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        contents: [{ 
-          parts: [
-            { text: promptText },
-            { inlineData: { mimeType: 'image/jpeg', data: base64Data } }
-          ] 
-        }],
-        generationConfig: {
-          temperature: 0.7,
-          maxOutputTokens: 4096
+    // Structured output schema — guarantees valid, parseable JSON
+    const quizSchema = {
+      type: 'OBJECT',
+      properties: {
+        quiz: {
+          type: 'ARRAY',
+          items: {
+            type: 'OBJECT',
+            properties: {
+              question: { type: 'STRING' },
+              options: {
+                type: 'ARRAY',
+                items: { type: 'STRING' },
+                minItems: 4,
+                maxItems: 4
+              },
+              correctIndex: { type: 'INTEGER' },
+              explanation: { type: 'STRING' }
+            },
+            required: ['question', 'options', 'correctIndex', 'explanation']
+          }
         }
-      })
-    });
+      },
+      required: ['quiz']
+    };
+
+    const response = await fetch(
+      `${GEMINI_API_BASE}/models/${GEMINI_MODEL}:generateContent`,
+      {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'x-goog-api-key': apiKey
+        },
+        body: JSON.stringify({
+          contents: [
+            {
+              role: 'user',
+              parts: [
+                { text: promptText },
+                {
+                  inline_data: {
+                    mime_type: mimeType,
+                    data: base64Data
+                  }
+                }
+              ]
+            }
+          ],
+          generationConfig: {
+            // temperature / topP / topK are deprecated for Gemini 3.6+ and ignored
+            maxOutputTokens: 4096,
+            responseMimeType: 'application/json',
+            responseSchema: quizSchema
+          }
+        })
+      }
+    );
 
     if (!response.ok) {
-      const err = await response.json();
-      throw new Error(err.error?.message || 'API request failed');
+      let errMsg = 'API request failed';
+      try {
+        const err = await response.json();
+        errMsg = err.error?.message || errMsg;
+      } catch (_) { /* ignore parse errors */ }
+      throw new Error(errMsg);
     }
 
     const data = await response.json();
-    const text = data.candidates?.[0]?.content?.parts?.[0]?.text || '';
 
-    let jsonStr = text;
-    const jsonMatch = text.match(/\{[\s\S]*\}/);
-    if (jsonMatch) jsonStr = jsonMatch[0];
+    // Handle blocked / empty responses
+    const candidate = data.candidates?.[0];
+    if (!candidate) {
+      const blockReason = data.promptFeedback?.blockReason;
+      throw new Error(
+        blockReason
+          ? `Request blocked: ${blockReason}`
+          : 'No response from the model'
+      );
+    }
+    if (candidate.finishReason && candidate.finishReason !== 'STOP') {
+      console.warn('Finish reason:', candidate.finishReason);
+    }
 
-    const parsed = JSON.parse(jsonStr);
+    const text = candidate.content?.parts?.[0]?.text || '';
+    if (!text) throw new Error('Empty response from the model');
+
+    let parsed;
+    try {
+      parsed = JSON.parse(text);
+    } catch (parseErr) {
+      // Fallback: extract JSON object if model wrapped it
+      const jsonMatch = text.match(/\{[\s\S]*\}/);
+      if (jsonMatch) {
+        parsed = JSON.parse(jsonMatch[0]);
+      } else {
+        throw new Error('Could not parse quiz JSON from model response');
+      }
+    }
+
     quizData = parsed.quiz || parsed.questions || parsed;
     if (!Array.isArray(quizData)) quizData = [quizData];
 
-    quizData = quizData.map(q => ({
+    quizData = quizData.map((q) => ({
       question: q.question,
-      options: q.options,
+      options: Array.isArray(q.options) ? q.options : [],
       correctIndex: q.correctIndex ?? q.correct_answer_index ?? 0,
-      explanation: q.explanation
+      explanation: q.explanation || ''
     }));
 
     if (quizData.length === 0) throw new Error('No questions generated');
